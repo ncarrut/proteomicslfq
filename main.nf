@@ -1122,6 +1122,33 @@ process msstats {
      """
 }
 
+process edgeR {
+
+    label 'process_medium'
+
+    publishDir "${params.outdir}/logs", mode: 'copy', pattern: '*.log'
+    publishDir "${params.outdir}/edgeR", mode: 'copy'
+
+    when:
+     !sdrf_file = null
+    // !params.skip_post_edgeR 
+
+    input:
+     file sdrf from out_msstats
+     file mztab from out_mztab_msstats
+
+    output:
+     file "*.html" 
+     file "*.csv"
+     file "*.log"
+
+    script:
+     """
+     renderScript.R ${sdrf} ${mztab} > edgeR.log 
+     """
+}
+
+
 //TODO allow user config yml (as second arg to the script
 
 process ptxqc {
