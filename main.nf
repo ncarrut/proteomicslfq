@@ -1055,9 +1055,10 @@ process proteomicslfq {
      file fasta from plfq_in_db.mix(plfq_in_db_decoy)
 
     output:
-     file "out.mzTab" into out_mztab_plfq, out_mztab_msstats
+     file "out.mzTab" into out_mztab_plfq, out_mztab_msstats, out_mztab_edgeR
      file "out.consensusXML" into out_consensusXML
      file "out.csv" optional true into out_msstats
+     file "out.csv" optional true into out_edgeR
      file "debug_mergedIDs.idXML" optional true
      file "debug_mergedIDs_inference.idXML" optional true
      file "debug_mergedIDsGreedyResolved.idXML" optional true
@@ -1122,9 +1123,11 @@ process msstats {
      """
 }
 
+
 process edgeR {
 
     label 'process_medium'
+    container 'ncarrut/protstatmd:1.0'
 
     publishDir "${params.outdir}/logs", mode: 'copy', pattern: '*.log'
     publishDir "${params.outdir}/edgeR", mode: 'copy'
@@ -1134,17 +1137,25 @@ process edgeR {
     // !params.skip_post_edgeR 
 
     input:
-     file sdrf from out_msstats
-     file mztab from out_mztab_msstats
+     path csv from out_edgeR
+     path mztab from out_mztab_edgeR
 
     output:
-     file "*.html" 
-     file "*.csv"
-     file "*.log"
+     file "*.html" optional true
+     file "*.csv" optional true
+     file "*.log" optional true
+
+     // Todo:  softcode sdrf and mzTab files and accept contrasts or a contol case
 
     script:
      """
-     renderScript.R ${sdrf} ${mztab} > edgeR.log 
+      head ${csv}
+      cp /usr/local/src/myscripts/spectralCounting.Rmd ./spectralCounting.Rmd
+      cp /usr/local/src/myscripts/renderSpectralCounting.R ./renderSpectralCounting.R
+      ls 
+
+      Rscript renderSpectralCounting.R ${csv} ${mztab}  > edgeR.log
+
      """
 }
 
