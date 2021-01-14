@@ -1132,10 +1132,6 @@ process edgeR {
     publishDir "${params.outdir}/logs", mode: 'copy', pattern: '*.log'
     publishDir "${params.outdir}/edgeR", mode: 'copy'
 
-    //when:
-    // !sdrf_file = null
-    // !params.skip_post_edgeR 
-
     input:
      path csv from out_edgeR
      path mztab from out_mztab_edgeR

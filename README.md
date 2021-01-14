@@ -31,7 +31,7 @@ The pipeline is built using [Nextflow](https://www.nextflow.io), a workflow tool
 4. Start running your own analysis!
 
     ```bash
-    nextflow run nf-core/proteomicslfq \
+    nextflow run ncarrut/proteomicslfq:spectralCounting \
       -profile <docker/singularity/conda/institute> \
       --input '*.mzml' \
       --database 'myProteinDB.fasta' \
