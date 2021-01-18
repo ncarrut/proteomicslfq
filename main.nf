@@ -1127,7 +1127,7 @@ process msstats {
 process edgeR {
 
     label 'process_medium'
-    container 'ncarrut/protstatmd:de8a3087dfd3'
+    container 'ncarrut/protstatmd:1.1'
 
     publishDir "${params.outdir}/logs", mode: 'copy', pattern: '*.log'
     publishDir "${params.outdir}/edgeR", mode: 'copy'
