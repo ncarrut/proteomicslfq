@@ -1141,13 +1141,15 @@ process edgeR {
      file "*.csv" optional true
      file "*.log" optional true
 
-     // Todo:  softcode sdrf and mzTab files and accept contrasts or a contol case
 
     script:
      """
       head ${csv}
       cp /usr/local/src/myscripts/spectralCounting.Rmd ./spectralCounting.Rmd
       cp /usr/local/src/myscripts/renderSpectralCounting.R ./renderSpectralCounting.R
+      echo "---------pwd------------"
+      pwd
+      echo "----------ls------------"
       ls 
 
       Rscript renderSpectralCounting.R ${csv} ${mztab}  > edgeR.log
