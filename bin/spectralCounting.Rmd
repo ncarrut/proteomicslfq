@@ -1,0 +1,216 @@
+---
+title: "Spectral Counting Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r include = FALSE}
+library(conflicted)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(gridExtra)
+library(scales)
+
+library(MSstats)
+library(edgeR)
+library(qvalue)
+
+library(plotly)
+library(DT)
+library(htmltools)
+
+theme_set(theme_bw(base_size = 10))
+```
+
+
+
+```{r}
+## EdgeR
+PSMFrame <- data.frame(PSMtable)
+row.names(PSMFrame) <- PSMFrame$accession
+PSMFrame <- PSMFrame[, -1]
+PSMFrame[is.na(PSMFrame)] <- 0
+
+# remove rows with less than 10 counts
+OKtest <- rowSums(PSMFrame) > 0
+filteredPSMFrame <- PSMFrame[OKtest, ]
+
+## sort csv2mzTab so that rows correspond to PSMFrame columns
+csv2mzTabSorted <- left_join(data.frame(conditionRep = colnames(PSMFrame)),
+                             csv2mzTab %>% mutate(conditionRep = make.names(conditionRep)),
+                             by = "conditionRep")
+
+## prepare design
+group <- factor(csv2mzTabSorted$Condition)
+y <- DGEList(counts=filteredPSMFrame, group=group)
+y <- calcNormFactors(y)
+design <- model.matrix(~ 0 + group)
+colnames(design) <- gsub("group", "", colnames(design))
+
+## Make sure design matrix corresponds to contrast mat
+if(!all(colnames(contrast_mat) == colnames(design))){
+  stop("Error in correspondance between contrast and design matrix")
+}
+
+## Estimate dispersion and perform quasi-likelihood F-tests:
+y <- estimateDisp(y, design)
+fit <- glmQLFit(y, design)
+
+## Iterate through the contrasts
+## Iterate through the contrasts
+qlfList <- list()
+qObjList <- list()
+for(i in 1:nrow(contrast_mat)){
+  qlfList[[i]] <- glmQLFTest(fit, contrast = contrast_mat[i,])
+  qObjList[[i]] <- qvalue(qlfList[[i]]$table$PValue)
+}
+
+```
+
+
+`r nrow(PSMFrame)` Proteins were detected.  `r sum(OKtest)` had any quantitative data.  `r ncol(PSMFrame)` biological samples were analyzed from `r length(unique(data$Reference))` raw files.  EdgeR was used to identify affected proteins.  
+
+```{r}
+## counts by biosample
+data.frame(sample = colnames(PSMtable)[-1],
+           count = colSums(PSMtable[, -1], na.rm = TRUE)) %>%
+  mutate(group = sapply(strsplit(sample, "_"), '[', 1)) %>%
+  ggplot(aes(x = sample, y = count, fill = group)) +
+  ## color samples by group alternating light and dark grey
+  scale_fill_manual(values = rep(c(grey(0.3), grey(0.6)), 
+                                 ceiling(length(unique(group))/2))[1:length(unique(group))]) +
+  geom_col() +
+  theme(legend.position = 'none') +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  coord_flip()
+```
+
+**Figure 1** Number of spectral counts per biological sample.  
+
+---
+
+## Summary of affected proteins
+
+```{r}
+summaryTable <- data.frame(Contrast = row.names(contrast_mat), q10 = 0,
+                           q30 = 0, estimateChanged = 0)
+
+for(i in 1:nrow(summaryTable)){
+  summaryTable$q10[i] <- sum(qObjList[[i]]$qvalues < 0.1, na.rm = TRUE)
+  summaryTable$q30[i] <- sum(qObjList[[i]]$qvalues < 0.3, na.rm = TRUE)
+  summaryTable$estimateChanged[i] <- round((1-qObjList[[i]]$pi0)*nrow(filteredPSMFrame), 1)
+}
+DT::datatable(summaryTable, rownames = FALSE,
+              colnames = c("Contrast", "q < 0.1", "q < 0.3", "Estimate Changed"))
+```
+
+---
+
+## p-value histogram    
+p-value histogram for the contrast `r rownames(contrast_mat)[whichContrast]`.  Horizontal line indicates the number of true null hypotheses per bin.  
+
+```{r}
+pValHistFun <- function(qlfRes){
+  yintercept <- nrow(qlfRes$table) * qvalue(qlfRes$table$PValue)$pi0/20
+  title <- rownames(contrast_mat)[whichContrast]
+  qlfRes$table %>%
+    ggplot(aes(x = PValue)) +
+    geom_histogram(bins = 20) +
+    geom_hline(yintercept = yintercept) +
+    labs(title = title)
+}
+
+pValHistFun(qlfList[[whichContrast]])
+```
+
+---
+
+## Volcano plot  
+Volcano plot for the contrast `r rownames(contrast_mat)[whichContrast]`.  The plot is interactive: hovering will bring up protein ID information.
+
+```{r}
+## get proteins for description
+protein <- proteins(MzTabRes) %>%
+  mutate(description = sapply(strsplit(description, " OS"), '[', 1))
+  distinct(accession, description)
+
+volcanoFun <- function(qlfRes, title){
+  qlfRes$table %>%
+    mutate(accession = row.names(qlfRes$table)) %>%
+    left_join(dplyr::select(protein, accession, description), by = "accession") %>%
+    mutate(qValue = qvalue(PValue)$qvalues) %>%
+    mutate(affected = qValue < 0.1) %>%
+    mutate(FC = 2 ^ logFC) %>%
+    mutate(negLogP = -log10(PValue)) %>%
+    ggplot(aes(x = FC, y = negLogP, text = description)) +
+    geom_point(data = function(x) x[!x$affected,], color = "black") +
+    geom_point(data = function(x) x[x$affected,], color = "red") +
+    scale_x_continuous(trans = "log2", breaks = breaks_log(n = 7, base = 2)) +
+    labs(x = "Fold change", y = "-log10 p-value", title = title)
+}
+
+ggplotly(volcanoFun(qlfList[[whichContrast]], title = rownames(contrast_mat)[whichContrast]))
+
+```
+
+
+
+
+```{r}
+# MAplot <- qlf$table %>%
+#   mutate(intensity = rowSums(PSMFrame[OKtest, ])) %>%
+#   mutate(accession = row.names(qlf$table)) %>%
+#   inner_join(dplyr::select(protein, accession, description), by = "accession") %>%
+#   mutate(FC = 2^logFC) %>%
+#   mutate(qValues = qvalue(PValue)$qvalues) %>%
+#   mutate(changed = !is.na(qValues) & qValues < 0.001) %>%
+#   mutate(PValue = -log10(PValue)) %>%
+#   ggplot(aes(x = intensity, y = FC, color = changed, text = description)) +
+#   geom_point() +
+#   scale_color_manual(values = c("black", "red")) +
+#   scale_y_continuous(trans = "log2", breaks = 2^seq(-4, 8, 2)) +
+#   scale_x_continuous(trans = "log10") +
+#   labs(x = "Total Counts", y = "Fold-change")
+# 
+# ggplotly(MAplot)
+
+```
+
+```{r}
+## Single output table
+qlfList[[whichContrast]]$table %>%
+  mutate(accession = row.names(.)) %>%
+  left_join(dplyr::select(protein, accession, description), by = "accession") %>%
+  mutate(label = rownames(contrast_mat)[whichContrast]) %>%
+  relocate(label) %>%
+  relocate(description) %>%
+  relocate(accession) %>%
+  write.csv(paste0(make.names(rownames(contrast_mat)[whichContrast]), ".csv"))
+```
+
+
+```{r}
+## pooled output table
+if(whichContrast == length(qlfList)){
+  outputTableList <- list()
+  for(i in 1:length(qlfList)){
+    label <- rownames(contrast_mat)[i]
+    outputTableList[[i]] <- qlfList[[i]]$table %>%
+      mutate(accession = row.names(.)) %>%
+      left_join(dplyr::select(protein, accession, description), by = "accession") %>%
+      mutate(label = label) %>%
+      relocate(label) %>%
+      relocate(description) %>%
+      relocate(accession) 
+  }
+  do.call(rbind, outputTableList) %>%
+    write.csv("edgeR_output.csv")
+}
+
+
+```
+

@@ -1145,7 +1145,6 @@ process edgeR {
     script:
      """
       head ${csv}
-      cp /usr/local/src/myscripts/spectralCounting.Rmd ./spectralCounting.Rmd
       cp /usr/local/src/myscripts/renderSpectralCounting.R ./renderSpectralCounting.R
       echo "---------pwd------------"
       pwd
@@ -1157,7 +1156,7 @@ process edgeR {
      """
 }
 
-
+// cp /usr/local/src/myscripts/spectralCounting.Rmd ./spectralCounting.Rmd
 //TODO allow user config yml (as second arg to the script
 
 process ptxqc {
