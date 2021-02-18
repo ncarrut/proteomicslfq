@@ -135,7 +135,7 @@ Volcano plot for the contrast `r rownames(contrast_mat)[whichContrast]`.  The pl
 ```{r}
 ## get proteins for description
 protein <- proteins(MzTabRes) %>%
-  mutate(description = sapply(strsplit(description, " OS"), '[', 1))
+  mutate(description = sapply(strsplit(description, " OS"), '[', 1)) %>%
   distinct(accession, description)
 
 volcanoFun <- function(qlfRes, title){

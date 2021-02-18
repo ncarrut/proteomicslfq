@@ -214,6 +214,8 @@ if (tocheck.toLowerCase().endsWith("sdrf") || tocheck.toLowerCase().endsWith("ts
 
 params.database = params.database ?: { log.error "No protein database provided. Make sure you have used the '--database' option."; exit 1 }()
 params.outdir = params.outdir ?: { log.warn "No output directory provided. Will put the results into './results'"; return "./results" }()
+reportChannel = Channel.fromPath( "$baseDir/Rmd/spectralCounting.Rmd" )
+renderChannel = Channel.fromPath( "$baseDir/Rmd/renderSpectralCounting.R" )
 
 /*
  * Create a channel for input files
@@ -1127,7 +1129,7 @@ process msstats {
 process edgeR {
 
     label 'process_medium'
-    container 'ncarrut/protstatmd:1.21'
+    container 'ncarrut/protstatmd:2.0'
 
     publishDir "${params.outdir}/logs", mode: 'copy', pattern: '*.log'
     publishDir "${params.outdir}/edgeR", mode: 'copy'
@@ -1135,17 +1137,24 @@ process edgeR {
     input:
      path csv from out_edgeR
      path mztab from out_mztab_edgeR
+     file report from reportChannel
+     file renderer from renderChannel
 
     output:
      file "*.html" optional true
      file "*.csv" optional true
      file "*.log" optional true
 
-
     script:
      """
-      head ${csv}
-      cp /usr/local/src/myscripts/renderSpectralCounting.R ./renderSpectralCounting.R
+      for item in *.R*; do
+        if [ -L "\${item}" ]; then
+            sourcepath="\$(python3 -c "import os; print(os.path.realpath('\${item}'))")"
+            echo ">>> resolving source file: \${sourcepath}"
+            rsync -va "\${sourcepath}" "\${item}"
+        fi
+      done
+
       echo "---------pwd------------"
       pwd
       echo "----------ls------------"
@@ -1156,6 +1165,8 @@ process edgeR {
      """
 }
 
+// sourcepath="\$(python -c "import os; print(os.path.realpath('\${item}'))")"
+// cp /usr/local/src/myscripts/renderSpectralCounting.R ./renderSpectralCounting.R
 // cp /usr/local/src/myscripts/spectralCounting.Rmd ./spectralCounting.Rmd
 //TODO allow user config yml (as second arg to the script
 
